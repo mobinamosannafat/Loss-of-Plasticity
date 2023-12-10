@@ -51,6 +51,9 @@ class DQN(nn.Module):
 
 
         self.to(device)
+        self.activation_l0norm = []
+        self.activation_l1norm = []
+        self.activation_l2norm = []
 
     def crelu(self, x):
         # Apply ReLU separately to positive and negative parts
@@ -60,7 +63,7 @@ class DQN(nn.Module):
         output = self.fc1(x)
 
         # Relu
-        # output = nn.ReLU(output)
+        # output = nn.ReLU()(output)
 
         # Leaky Relu
         output = nn.LeakyReLU(0.1)(output)
@@ -68,6 +71,12 @@ class DQN(nn.Module):
         # CRelu
         # output = self.crelu(output)
 
+        l0_norm = torch.norm(output, p=0, dim=1).mean().item()  # L0 norm
+        l1_norm = torch.norm(output, p=1, dim=1).mean().item()  # L1 norm
+        l2_norm = torch.norm(output, p=2, dim=1).mean().item()  # L2 norm
+        self.activation_l0norm.append(l0_norm)
+        self.activation_l1norm.append(l0_norm)
+        self.activation_l2norm.append(l0_norm)
         output = self.fc2(output)
         return output
 
@@ -120,6 +129,11 @@ def write_list_to_file(my_list, file_name):
         print(f"List has been written to {file_name} successfully.")
     except IOError:
         print("Error: Unable to write to file.")
+
+hidden_layer_weight_l2_norm = []
+hidden_layer_gradient_l0_norm = []  # List to store L0 norm values at different epochs
+hidden_layer_gradient_l1_norm = []  # List to store L1 norm values at different epochs
+hidden_layer_gradient_l2_norm = [] 
 
 train_losses = []
 rewards_log = []
@@ -196,6 +210,36 @@ for step in p_bar:
     if (step + 1) % TARGET_UPDATE_FREQ == 0:
         target_network.load_state_dict(online_network.state_dict())
 
+    hidden_layer_weights = online_network.fc1.weight.data.clone().detach()  # Clone and detach to prevent gradient tracking
+    l2_norm_weight = torch.norm(hidden_layer_weights, p=2, dim=1)  # Calculate L2 norm along the rows
+    hidden_layer_weight_l2_norm.append(l2_norm_weight.mean().item())  # Store the mean L2 norm value as a scalar
 
-write_list_to_file(train_losses, "train_losses.txt")
+    hidden_layer_gradients = online_network.fc1.weight.grad  # Get gradients of hidden layer weights
+    
+    # Calculate L0, L1, L2 norms
+    l0_norm_grad = torch.norm(hidden_layer_gradients, p=0, dim=1).mean().item()  # L0 norm
+    l1_norm_grad = torch.norm(hidden_layer_gradients, p=1, dim=1).mean().item()  # L1 norm
+    l2_norm_grad = torch.norm(hidden_layer_gradients, p=2, dim=1).mean().item()  # L2 norm
+    
+    hidden_layer_gradient_l0_norm.append(l0_norm_grad)
+    hidden_layer_gradient_l1_norm.append(l1_norm_grad)
+    hidden_layer_gradient_l2_norm.append(l2_norm_grad)
+
+# import matplotlib.pyplot as plt
+# plt.figure(figsize=(8, 6))
+# plt.plot(range(MAX_STEPS), hidden_layer_weight_l2_norm, marker='o', linestyle='-', color='blue')
+# plt.title('L2 Norm of Hidden Layer Weights Over Epochs')
+# plt.xlabel('Epoch')
+# plt.ylabel('L2 Norm Value')
+# plt.grid(True)
+# plt.show()
+
 write_list_to_file(rewards_log, "rewards_log.txt")
+write_list_to_file(train_losses, "train_losses.txt")
+write_list_to_file(hidden_layer_weight_l2_norm, "hidden_layer_weight_l2_norm.txt")
+write_list_to_file(hidden_layer_gradient_l0_norm, "hidden_layer_gradient_l0_norm.txt")
+write_list_to_file(hidden_layer_gradient_l1_norm, "hidden_layer_gradient_l1_norm.txt")
+write_list_to_file(hidden_layer_gradient_l2_norm, "hidden_layer_gradient_l2_norm.txt")
+write_list_to_file(online_network.activation_l0norm, "activation_l0_norm.txt")
+write_list_to_file(online_network.activation_l1norm, "activation_l1_norm.txt")
+write_list_to_file(online_network.activation_l2norm, "activation_l2_norm.txt")
